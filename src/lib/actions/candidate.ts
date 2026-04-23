@@ -124,3 +124,33 @@ export async function updateCandidateStatus(id: string, statut: "REJECTED" | "PE
     return { success: false, error: "Erreur lors de la mise à jour." }
   }
 }
+
+export async function deleteCandidate(candidateId: string) {
+  try {
+    // Récupérer le candidat avec ses paiements
+    const candidate = await prisma.candidat.findUnique({
+      where: { id: candidateId },
+      include: { payments: true }
+    })
+
+    if (!candidate) {
+      return { success: false, error: "Candidat non trouvé." }
+    }
+
+    // Supprimer d'abord tous les paiements associés
+    await prisma.payment.deleteMany({
+      where: { candidatId: candidateId }
+    })
+
+    // Supprimer le candidat
+    await prisma.candidat.delete({
+      where: { id: candidateId }
+    })
+
+    revalidatePath("/admin")
+    return { success: true }
+  } catch (error) {
+    console.error("Error deleting candidate:", error)
+    return { success: false, error: "Erreur lors de la suppression." }
+  }
+}

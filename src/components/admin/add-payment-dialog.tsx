@@ -30,6 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { addPayment } from "@/lib/actions/payment"
+import { uploadImage } from "@/lib/actions/upload"
 import { PAYMENT_MODE } from "@/lib/constants"
 import { Loader2, PlusCircle, Upload, FileImage, X } from "lucide-react"
 
@@ -80,19 +81,20 @@ export function AddPaymentDialog({ candidatId, candidatName, remainingAmount }: 
 
     setUploadedFile(file)
     
-    // Simuler l'upload vers un service de stockage
-    // Dans un vrai projet, tu utiliserais Cloudinary, AWS S3, etc.
-    const formData = new FormData()
-    formData.append('file', file)
-    
     try {
-      // Simulation - remplace par ton vrai service d'upload
-      const mockUrl = `https://mock-upload.com/${file.name}`
-      form.setValue('captureUrl', mockUrl)
-      toast.success("Image uploadée avec succès!")
-    } catch {
-      toast.error("Erreur lors de l'upload")
+      // Upload vers Cloudinary
+      const result = await uploadImage(file)
+      
+      if (result.success && result.url) {
+        form.setValue('captureUrl', result.url)
+        toast.success("Image uploadée avec succès!")
+      } else {
+        throw new Error(result.error || "Upload failed")
+      }
+    } catch (error) {
+      toast.error("Erreur lors de l'upload sur Cloudinary")
       setUploadedFile(null)
+      form.setValue('captureUrl', '')
     }
   }
 

@@ -18,6 +18,7 @@ import { Input } from "@/components/ui/input"
 import { Formation } from "@prisma/client"
 import { Loader2, UploadCloud, CheckCircle2, ChevronLeft } from "lucide-react"
 import { createCandidate } from "@/lib/actions/candidate"
+import { uploadImage } from "@/lib/actions/upload"
 
 const formSchema = z.object({
   nom: z.string().min(2, "Le nom est requis"),
@@ -43,7 +44,9 @@ export function RegistrationForm({
 }) {
   const [step, setStep] = useState(1)
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [uploadUrl, setUploadUrl] = useState<string | null>(null)
+  const [isUploading, setIsUploading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
 
   const form = useForm<z.infer<typeof formSchema>>({
@@ -63,6 +66,46 @@ export function RegistrationForm({
   })
 
   const watchModePaiement = form.watch("modePaiement")
+
+  const handleFileUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0]
+    if (!file) return
+
+    // Vérifier le type de fichier
+    if (!file.type.startsWith('image/')) {
+      toast.error("Veuillez uploader une image (JPG, PNG, etc.)")
+      return
+    }
+
+    // Vérifier la taille (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error("L'image ne doit pas dépasser 5MB")
+      return
+    }
+
+    setUploadedFile(file)
+    setIsUploading(true)
+    
+    try {
+      // Upload vers Cloudinary
+      const result = await uploadImage(file)
+      
+      if (result.success && result.url) {
+        setUploadUrl(result.url)
+        form.setValue('capturePaiementUrl', result.url)
+        toast.success("Image uploadée avec succès!")
+      } else {
+        throw new Error(result.error || "Upload failed")
+      }
+    } catch (error) {
+      toast.error("Erreur lors de l'upload sur Cloudinary")
+      setUploadedFile(null)
+      setUploadUrl(null)
+      form.setValue('capturePaiementUrl', '')
+    } finally {
+      setIsUploading(false)
+    }
+  }
 
   type StepKeys = keyof z.infer<typeof formSchema>
 
@@ -103,6 +146,7 @@ export function RegistrationForm({
         form.reset()
         setStep(1)
         setUploadUrl(null)
+    setUploadedFile(null)
       } else {
         toast.success("Inscription validée !")
         setIsSuccess(true)
@@ -128,6 +172,7 @@ export function RegistrationForm({
             setStep(1)
             form.reset()
             setUploadUrl(null)
+    setUploadedFile(null)
           }}
           className="w-full h-12 text-lg rounded-xl bg-blue-600 hover:bg-blue-700"
         >
@@ -359,24 +404,19 @@ export function RegistrationForm({
                         accept="image/*" 
                         className="hidden" 
                         id="proof-upload"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onloadend = () => {
-                              const base64String = reader.result as string;
-                              form.setValue("capturePaiementUrl", base64String);
-                              setUploadUrl(base64String);
-                            };
-                            reader.readAsDataURL(file);
-                          }
-                        }}
+                        onChange={handleFileUpload}
                       />
                       <label 
                         htmlFor="proof-upload"
                         className="border-2 border-dashed border-zinc-200 rounded-xl text-zinc-500 hover:text-blue-600 hover:border-blue-400 p-8 flex flex-col items-center justify-center cursor-pointer transition-colors bg-zinc-50/50 block"
                       >
-                        {uploadUrl ? (
+                        {isUploading ? (
+                          <>
+                            <Loader2 className="h-10 w-10 mb-3 opacity-80 animate-spin" />
+                            <p className="text-sm font-medium">Upload en cours...</p>
+                            <p className="text-xs text-zinc-400 mt-1">Veuillez patienter</p>
+                          </>
+                        ) : uploadUrl ? (
                           <img src={uploadUrl} alt="Capture Uploadée" className="max-h-40 rounded shadow-sm" />
                         ) : (
                           <>

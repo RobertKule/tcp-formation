@@ -12,9 +12,9 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { updateCandidateStatus } from "@/lib/actions/candidate"
+import { updateCandidateStatus, deleteCandidate } from "@/lib/actions/candidate"
 import { Candidat, Formation, Payment } from "@prisma/client"
-import { Check, X, Loader2, History, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon } from "lucide-react"
+import { Check, X, Loader2, History, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Trash2 } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -36,6 +36,8 @@ export type CandidateWithAll = Candidat & {
 export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] }) {
   const [loadingId, setLoadingId] = useState<string | null>(null)
   const [sortConfig, setSortConfig] = useState<{ key: "nom" | "formation" | "statut", direction: "asc" | "desc" } | null>(null)
+  const [deleteModalOpen, setDeleteModalOpen] = useState(false)
+  const [candidateToDelete, setCandidateToDelete] = useState<{ id: string; name: string } | null>(null)
 
   const handleStatusUpdate = async (id: string, status: "REJECTED" | "PENDING") => {
     setLoadingId(id)
@@ -43,6 +45,27 @@ export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] 
     setLoadingId(null)
     if (res.success) {
       toast.success(status === "REJECTED" ? "Candidature rejetée" : "Statut mis à jour")
+    } else {
+      toast.error(res.error)
+    }
+  }
+
+  const handleDelete = (id: string, name: string) => {
+    setCandidateToDelete({ id, name })
+    setDeleteModalOpen(true)
+  }
+
+  const confirmDelete = async () => {
+    if (!candidateToDelete) return
+    
+    setLoadingId(candidateToDelete.id)
+    const res = await deleteCandidate(candidateToDelete.id)
+    setLoadingId(null)
+    
+    if (res.success) {
+      toast.success("Candidat supprimé avec succès")
+      setDeleteModalOpen(false)
+      setCandidateToDelete(null)
     } else {
       toast.error(res.error)
     }
@@ -91,7 +114,8 @@ export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] 
   }
 
   return (
-    <div className="rounded-md border overflow-x-auto">
+    <>
+      <div className="rounded-md border overflow-x-auto">
       <Table>
         <TableHeader className="bg-zinc-50">
           <TableRow>
@@ -186,6 +210,17 @@ export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] 
                           {loadingId === candidate.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
                         </Button>
                       )}
+
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        title="Supprimer"
+                        className="text-red-600 border-red-200 bg-red-50 hover:bg-red-100"
+                        onClick={() => handleDelete(candidate.id, `${candidate.nom} ${candidate.postnom}`)}
+                        disabled={loadingId === candidate.id}
+                      >
+                        {loadingId === candidate.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -195,5 +230,54 @@ export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] 
         </TableBody>
       </Table>
     </div>
+
+      {/* Modal de confirmation de suppression */}
+      <Dialog open={deleteModalOpen} onOpenChange={setDeleteModalOpen}>
+      <DialogContent className="max-w-md border-0 shadow-2xl bg-gradient-to-br from-white to-zinc-50">
+        <div className="p-6 space-y-6">
+          <div className="text-center space-y-4">
+            <div className="mx-auto w-12 h-12 bg-red-100 rounded-full flex items-center justify-center mb-4">
+              <Trash2 className="w-6 h-6 text-red-600" />
+            </div>
+            <DialogTitle className="text-2xl font-bold text-[#0B1527]">Confirmer la suppression</DialogTitle>
+            <DialogDescription className="text-zinc-600">
+              Êtes-vous sûr de vouloir supprimer <span className="font-semibold text-[#0B1527]">{candidateToDelete?.name}</span> ?
+            </DialogDescription>
+            <p className="text-sm text-red-600 bg-red-50 rounded-lg p-3 border border-red-100">
+              ⚠️ Cette action est irréversible et supprimera également tous les paiements associés.
+            </p>
+          </div>
+
+          <div className="flex space-x-3">
+            <Button
+              variant="outline"
+              onClick={() => setDeleteModalOpen(false)}
+              className="flex-1 h-11 border-zinc-200 text-zinc-700 hover:bg-zinc-50"
+              disabled={loadingId === candidateToDelete?.id}
+            >
+              Annuler
+            </Button>
+            <Button
+              onClick={confirmDelete}
+              className="flex-1 h-11 bg-red-600 hover:bg-red-700 text-white shadow-lg shadow-red-500/30 transition-all hover:scale-[1.02]"
+              disabled={loadingId === candidateToDelete?.id}
+            >
+              {loadingId === candidateToDelete?.id ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Suppression...
+                </>
+              ) : (
+                <>
+                  <Trash2 className="mr-2 h-4 w-4" />
+                  Supprimer
+                </>
+              )}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+    </>
   )
 }
