@@ -42,8 +42,13 @@ export default function LoginPage() {
           <div className="bg-white p-8 lg:p-10 rounded-[1.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-zinc-100 flex flex-col w-full relative overflow-hidden">
             <div className="absolute top-0 left-0 w-full h-1.5 bg-blue-600" />
             
-            <div className="mx-auto w-12 h-12 bg-blue-50 text-blue-600 rounded-full flex items-center justify-center mb-6">
-              <LockKeyhole className="w-6 h-6" />
+            {/* Logo TCP */}
+            <div className="mx-auto mb-6">
+              <img 
+                src="/LogoTCP.jpeg" 
+                alt="TCP Formation Logo" 
+                className="h-16 w-auto object-contain mx-auto"
+              />
             </div>
 
             <div className="text-center mb-8">

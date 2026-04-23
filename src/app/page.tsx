@@ -47,6 +47,15 @@ export default async function Home() {
              style={{ backgroundImage: 'radial-gradient(circle at 2px 2px, black 1px, transparent 0)', backgroundSize: '32px 32px' }} />
         
         <div className="max-w-xl z-10">
+          {/* Logo TCP */}
+          <div className="mb-8">
+            <img 
+              src="/LogoTCP.jpeg" 
+              alt="TCP Formation Logo" 
+              className="h-16 lg:h-20 w-auto object-contain"
+            />
+          </div>
+          
           <h1 className="text-[#0B1527] text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.1] mb-6">
             Investissez dans votre <span className="text-blue-600">Avenir</span>
           </h1>

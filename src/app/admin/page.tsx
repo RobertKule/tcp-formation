@@ -29,11 +29,13 @@ export default async function AdminDashboard() {
     <div className="min-h-screen bg-[#F8F9FA] flex flex-col">
       {/* Top Navbar */}
       <header className="sticky top-0 z-30 flex h-20 w-full items-center justify-between border-b border-zinc-200/60 bg-white/80 px-6 lg:px-10 backdrop-blur-md">
-        <div className="flex items-center gap-2">
-           <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-sm">
-              <TrendingUp className="w-5 h-5 text-white" />
-           </div>
-           <h1 className="text-xl font-bold tracking-tight text-[#0B1527] ml-2">Administration TCP</h1>
+        <div className="flex items-center gap-3">
+           <img 
+             src="/LogoTCP.jpeg" 
+             alt="TCP Formation Logo" 
+             className="h-10 w-auto object-contain"
+           />
+           <h1 className="text-xl font-bold tracking-tight text-[#0B1527]">Administration TCP</h1>
         </div>
         <form action={logout}>
           <Button type="submit" variant="ghost" className="text-zinc-500 hover:text-red-700 hover:bg-red-50 font-medium transition-colors">
