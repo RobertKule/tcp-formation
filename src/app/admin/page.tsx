@@ -7,6 +7,8 @@ import { logout } from "@/lib/actions/auth"
 import { Button } from "@/components/ui/button"
 import { LogOut, Users, BookOpen, TrendingUp } from "lucide-react"
 
+export const dynamic = 'force-dynamic'
+
 export default async function AdminDashboard() {
   const candidates = await prisma.candidat.findMany({
     include: { 

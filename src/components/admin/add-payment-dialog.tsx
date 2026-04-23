@@ -10,7 +10,6 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogHeader,
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog"
@@ -31,7 +30,7 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { addPayment } from "@/lib/actions/payment"
-import { CandidateStatus, PAYMENT_MODE } from "@/lib/constants"
+import { PAYMENT_MODE } from "@/lib/constants"
 import { Loader2, PlusCircle, Upload, FileImage, X } from "lucide-react"
 
 const formSchema = z.object({
@@ -51,7 +50,6 @@ export function AddPaymentDialog({ candidatId, candidatName, remainingAmount }: 
   const [open, setOpen] = useState(false)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
-  const [uploadUrl, setUploadUrl] = useState<string | null>(null)
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -90,19 +88,16 @@ export function AddPaymentDialog({ candidatId, candidatName, remainingAmount }: 
     try {
       // Simulation - remplace par ton vrai service d'upload
       const mockUrl = `https://mock-upload.com/${file.name}`
-      setUploadUrl(mockUrl)
       form.setValue('captureUrl', mockUrl)
       toast.success("Image uploadée avec succès!")
-    } catch (error) {
+    } catch {
       toast.error("Erreur lors de l'upload")
       setUploadedFile(null)
-      setUploadUrl(null)
     }
   }
 
   const removeFile = () => {
     setUploadedFile(null)
-    setUploadUrl(null)
     form.setValue('captureUrl', '')
   }
 
@@ -118,7 +113,6 @@ export function AddPaymentDialog({ candidatId, candidatName, remainingAmount }: 
       setOpen(false)
       form.reset()
       setUploadedFile(null)
-      setUploadUrl(null)
     } else {
       toast.error("error" in res ? (res.error as string) : "Une erreur est survenue")
     }
@@ -211,7 +205,7 @@ export function AddPaymentDialog({ candidatId, candidatName, remainingAmount }: 
               {paymentMode === PAYMENT_MODE.MOBILE_MONEY && (
                 <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-300">
                   <FormItem>
-                    <FormLabel className="text-sm font-medium text-zinc-700">Capture d'écran du paiement</FormLabel>
+                    <FormLabel className="text-sm font-medium text-zinc-700">Capture d&apos;écran du paiement</FormLabel>
                     <FormControl>
                       <div className="space-y-3">
                         {!uploadedFile ? (
@@ -231,7 +225,7 @@ export function AddPaymentDialog({ candidatId, candidatName, remainingAmount }: 
                               <div className="text-sm text-zinc-600">
                                 <span className="font-medium text-blue-600">Cliquez pour uploader</span> ou glissez-déposez
                               </div>
-                              <p className="text-xs text-zinc-500">PNG, JPG jusqu'à 5MB</p>
+                              <p className="text-xs text-zinc-500">PNG, JPG jusqu&apos;à 5MB</p>
                             </label>
                           </div>
                         ) : (

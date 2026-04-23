@@ -131,7 +131,7 @@ export function RegistrationForm({
           }}
           className="w-full h-12 text-lg rounded-xl bg-blue-600 hover:bg-blue-700"
         >
-          Retour à l'accueil
+          Retour à l&apos;accueil
         </Button>
       </div>
     )

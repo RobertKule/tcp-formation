@@ -32,7 +32,7 @@ export default function LoginPage() {
         <Link href="/">
           <Button variant="ghost" className="text-zinc-500 hover:text-zinc-900 font-medium bg-white/50 border border-transparent hover:bg-white hover:border-zinc-200 shadow-sm transition-all rounded-xl h-11 px-4">
             <ChevronLeft className="w-4 h-4 mr-2" />
-            Retour à l'accueil
+            Retour à l&apos;accueil
           </Button>
         </Link>
       </div>
