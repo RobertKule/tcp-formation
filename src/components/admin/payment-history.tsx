@@ -4,12 +4,15 @@ import { format } from "date-fns"
 import { fr } from "date-fns/locale"
 import { Payment } from "@prisma/client"
 import { CircleDollarSign, Calendar, Image as ImageIcon } from "lucide-react"
+import { PrintReceiptButton } from "./print-receipt-button"
 
 interface PaymentHistoryProps {
   payments: Payment[]
+  candidateName: string
+  matricule?: string
 }
 
-export function PaymentHistory({ payments }: PaymentHistoryProps) {
+export function PaymentHistory({ payments, candidateName, matricule }: PaymentHistoryProps) {
   if (payments.length === 0) {
     return <p className="text-sm text-muted-foreground text-center py-4">Aucun versement enregistré.</p>
   }
@@ -25,10 +28,33 @@ export function PaymentHistory({ payments }: PaymentHistoryProps) {
           </div>
           <div className="flex-1 space-y-1">
             <div className="flex justify-between items-start">
-              <p className="font-semibold text-zinc-900"> Versement de {payment.amount} $</p>
-              <span className="text-xs text-zinc-500 uppercase font-bold tracking-wider px-2 py-0.5 bg-zinc-100 rounded">
-                {payment.paymentMode}
-              </span>
+              <div className="flex flex-col">
+                <p className="font-semibold text-zinc-900"> Versement de {payment.amount} $</p>
+                <div className="flex gap-2 mt-0.5">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded ${
+                    (payment as any).statut === "APPROVED" ? "bg-green-100 text-green-700" : 
+                    (payment as any).statut === "REJECTED" ? "bg-red-100 text-red-700" : 
+                    "bg-orange-100 text-orange-700"
+                  }`}>
+                    {(payment as any).statut || "PENDING"}
+                  </span>
+                  <span className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider px-2 py-0.5 bg-zinc-100 rounded">
+                    {payment.paymentMode}
+                  </span>
+                </div>
+              </div>
+              { (payment as any).statut === "APPROVED" && (
+                <PrintReceiptButton data={{
+                  type: "PAIEMENT",
+                  nom: candidateName,
+                  beneficiaire: candidateName,
+                  matricule: matricule,
+                  montant: payment.amount,
+                  motif: `Paiement formation TCP - ${payment.paymentMode}`,
+                  date: new Date(payment.datePayment),
+                  modePaiement: payment.paymentMode
+                }} />
+              )}
             </div>
             <div className="flex items-center gap-4 text-xs text-zinc-500">
               <div className="flex items-center gap-1">

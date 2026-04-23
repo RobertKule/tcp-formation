@@ -12,9 +12,10 @@ import {
 } from "@/components/ui/table"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { updateCandidateStatus, deleteCandidate } from "@/lib/actions/candidate"
+import { updateCandidateStatus, deleteCandidate, assignMatricule } from "@/lib/actions/candidate"
+import { validatePayment } from "@/lib/actions/payment"
 import { Candidat, Formation, Payment } from "@prisma/client"
-import { Check, X, Loader2, History, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Trash2 } from "lucide-react"
+import { Check, X, Loader2, History, ArrowUpDown, ArrowUp, ArrowDown, Image as ImageIcon, Trash2, CheckCircle, Sparkles } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -26,6 +27,7 @@ import {
 import { PaymentProgress } from "./payment-progress"
 import { PaymentHistory } from "./payment-history"
 import { AddPaymentDialog } from "./add-payment-dialog"
+import { PrintReceiptButton } from "./print-receipt-button"
 import { CANDIDATE_STATUS } from "@/lib/constants"
 
 export type CandidateWithAll = Candidat & {
@@ -45,6 +47,17 @@ export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] 
     setLoadingId(null)
     if (res.success) {
       toast.success(status === "REJECTED" ? "Candidature rejetée" : "Statut mis à jour")
+    } else {
+      toast.error(res.error)
+    }
+  }
+
+  const handlePaymentValidation = async (paymentId: string, status: "APPROVED" | "REJECTED") => {
+    setLoadingId(paymentId)
+    const res = await validatePayment(paymentId, status)
+    setLoadingId(null)
+    if (res.success) {
+      toast.success(status === "APPROVED" ? "Paiement approuvé" : "Paiement rejeté")
     } else {
       toast.error(res.error)
     }
@@ -122,10 +135,11 @@ export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] 
             <TableHead className="cursor-pointer hover:bg-zinc-100 transition-colors whitespace-nowrap" onClick={() => handleSort("nom")}>
                <div className="flex items-center">Candidat {renderSortIcon("nom")}</div>
             </TableHead>
+            <TableHead>Matricule</TableHead>
             <TableHead className="cursor-pointer hover:bg-zinc-100 transition-colors whitespace-nowrap" onClick={() => handleSort("formation")}>
                <div className="flex items-center">Formation {renderSortIcon("formation")}</div>
             </TableHead>
-            <TableHead>Progression Paiement</TableHead>
+            <TableHead>Paiement (Approuvé)</TableHead>
             <TableHead className="cursor-pointer hover:bg-zinc-100 transition-colors whitespace-nowrap" onClick={() => handleSort("statut")}>
                <div className="flex items-center">Statut {renderSortIcon("statut")}</div>
             </TableHead>
@@ -141,7 +155,9 @@ export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] 
             </TableRow>
           ) : (
             sortedCandidates.map((candidate) => {
-              const totalPaid = candidate.payments.reduce((sum, p) => sum + p.amount, 0)
+              const totalPaid = candidate.payments
+                .filter(p => (p as any).statut === "APPROVED")
+                .reduce((sum, p) => sum + p.amount, 0)
               const remaining = candidate.formation.prix - totalPaid
               
               // Find the most recent capture uploaded by the user to display inline
@@ -154,11 +170,42 @@ export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] 
                     <div className="text-xs text-muted-foreground">{candidate.email}</div>
                   </TableCell>
                   <TableCell>
-                    <div className="text-sm">{candidate.formation.nom}</div>
+                    <div className="flex items-center gap-2">
+                       <Badge variant="outline" className="font-mono text-[10px] bg-zinc-50">{(candidate as any).matricule || "N/A"}</Badge>
+                       {!(candidate as any).matricule && (
+                         <Button 
+                           size="icon" 
+                           variant="ghost" 
+                           className="h-6 w-6 text-blue-500 hover:text-blue-600 hover:bg-blue-50"
+                           onClick={async () => {
+                             setLoadingId(candidate.id)
+                             const res = await assignMatricule(candidate.id)
+                             setLoadingId(null)
+                             if (res.success) toast.success(`Matricule généré: ${res.matricule}`)
+                             else toast.error(res.error)
+                           }}
+                           disabled={loadingId === candidate.id}
+                           title="Générer le matricule"
+                         >
+                           {loadingId === candidate.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
+                         </Button>
+                       )}
+                    </div>
+                  </TableCell>
+                  <TableCell>
+                    <div className="text-sm font-medium">{candidate.formation.nom}</div>
                     <div className="text-xs text-muted-foreground">{candidate.formation.prix} $</div>
                   </TableCell>
                   <TableCell className="min-w-[150px]">
-                    <PaymentProgress totalPaid={totalPaid} totalPrice={candidate.formation.prix} />
+                    <div className="space-y-1">
+                      <PaymentProgress totalPaid={totalPaid} totalPrice={candidate.formation.prix} />
+                      {candidate.payments.some(p => (p as any).statut === "PENDING") && (
+                        <div className="flex items-center text-orange-600 text-[10px] font-bold">
+                          <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                          PAIEMENT EN ATTENTE
+                        </div>
+                      )}
+                    </div>
                   </TableCell>
                   <TableCell>{getStatusBadge(candidate.statut)}</TableCell>
                   <TableCell className="text-right">
@@ -185,7 +232,11 @@ export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] 
                             </DialogDescription>
                           </DialogHeader>
                           <div className="mt-4">
-                            <PaymentHistory payments={candidate.payments} />
+                            <PaymentHistory 
+                              payments={candidate.payments} 
+                              candidateName={`${candidate.nom} ${candidate.postnom}`}
+                              matricule={(candidate as any).matricule || undefined}
+                            />
                           </div>
                         </DialogContent>
                       </Dialog>
@@ -198,18 +249,31 @@ export function CandidateTable({ candidates }: { candidates: CandidateWithAll[] 
                         />
                       )}
 
-                      {(candidate.statut as string) === CANDIDATE_STATUS.PENDING && (
-                        <Button
-                          size="icon-sm"
-                          variant="outline"
-                          title="Rejeter"
-                          className="text-red-500 border-red-200 bg-red-50 hover:bg-red-100"
-                          onClick={() => handleStatusUpdate(candidate.id, "REJECTED")}
-                          disabled={loadingId === candidate.id}
-                        >
-                          {loadingId === candidate.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
-                        </Button>
-                      )}
+                      {/* Payment Validation Buttons */}
+                      {candidate.payments.filter(p => (p as any).statut === "PENDING").map((pendingPayment) => (
+                        <div key={pendingPayment.id} className="flex gap-1 border-l pl-2 border-zinc-100 ml-1">
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            title={`Valider paiement de ${pendingPayment.amount}$`}
+                            className="text-green-600 hover:bg-green-50"
+                            onClick={() => handlePaymentValidation(pendingPayment.id, "APPROVED")}
+                            disabled={loadingId === pendingPayment.id}
+                          >
+                            {loadingId === pendingPayment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}
+                          </Button>
+                          <Button
+                            size="icon-sm"
+                            variant="ghost"
+                            title={`Rejeter paiement de ${pendingPayment.amount}$`}
+                            className="text-red-600 hover:bg-red-50"
+                            onClick={() => handlePaymentValidation(pendingPayment.id, "REJECTED")}
+                            disabled={loadingId === pendingPayment.id}
+                          >
+                            {loadingId === pendingPayment.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <X className="h-4 w-4" />}
+                          </Button>
+                        </div>
+                      ))}
 
                       <Button
                         size="icon-sm"

@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useForm } from "react-hook-form"
 import { zodResolver } from "@hookform/resolvers/zod"
 import { z } from "zod"
@@ -35,10 +35,12 @@ const formSchema = z.object({
 
 export function RegistrationForm({ 
   formations, 
+  selectedId,
   isAdmin = false,
   onSuccess 
 }: { 
   formations: Formation[],
+  selectedId?: string,
   isAdmin?: boolean,
   onSuccess?: () => void
 }) {
@@ -48,6 +50,7 @@ export function RegistrationForm({
   const [uploadUrl, setUploadUrl] = useState<string | null>(null)
   const [isUploading, setIsUploading] = useState(false)
   const [isSuccess, setIsSuccess] = useState(false)
+  const [showAllFormations, setShowAllFormations] = useState(false)
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -64,6 +67,14 @@ export function RegistrationForm({
       formationId: "",
     },
   })
+
+  useEffect(() => {
+    if (selectedId) {
+      form.setValue("formationId", selectedId)
+      // If we are at step 1, might stay there or move to step 2? 
+      // User just wants it selected, usually moving to step 2 is better CX but let's keep it simple first
+    }
+  }, [selectedId, form])
 
   const watchModePaiement = form.watch("modePaiement")
 
@@ -162,9 +173,9 @@ export function RegistrationForm({
         <div className="w-20 h-20 bg-green-50 rounded-full flex items-center justify-center mx-auto mb-6">
           <CheckCircle2 className="w-10 h-10 text-green-500" />
         </div>
-        <h2 className="text-3xl font-bold text-[#0B1527] mb-4">Inscription réussie !</h2>
+        <h2 className="text-3xl font-bold text-[#0B1527] mb-4">Inscription envoyée !</h2>
         <p className="text-[#4A5568] mb-8 text-lg">
-          Votre dossier a bien été enregistré. Un email de confirmation vous a été envoyé.
+          Votre dossier a bien été enregistré. Un email de confirmation vous sera envoyé.
         </p>
         <Button 
           onClick={() => {
@@ -226,35 +237,45 @@ export function RegistrationForm({
                   name="formationId"
                   render={({ field }) => (
                     <FormItem>
-                      <div className="space-y-3 mt-4">
-                        {formations.map((f) => {
+                      <div className="grid grid-cols-2 gap-3 mt-4">
+                        {(showAllFormations ? formations : formations.slice(0, 4)).map((f) => {
                           const isSelected = field.value === f.id
                           return (
                             <div 
                               key={f.id} 
                               onClick={() => field.onChange(f.id)}
-                              className={`border-2 rounded-xl p-5 cursor-pointer flex justify-between items-center transition-all ${
+                              className={`border-2 rounded-xl p-3 cursor-pointer flex flex-col justify-between transition-all aspect-square sm:aspect-auto sm:min-h-[100px] ${
                                 isSelected 
-                                ? "border-blue-600 bg-blue-50/50" 
-                                : "border-zinc-200 hover:border-blue-300"
+                                ? "border-blue-600 bg-blue-50/50 shadow-md ring-1 ring-blue-600" 
+                                : "border-zinc-200 hover:border-blue-300 bg-white"
                               }`}
                             >
-                              <div className="flex items-center space-x-4">
-                                <div className={`w-5 h-5 rounded-full border-2 flex items-center justify-center ${isSelected ? "border-blue-600" : "border-zinc-300"}`}>
-                                  {isSelected && <div className="w-2.5 h-2.5 bg-blue-600 rounded-full" />}
-                                </div>
-                                <div className="space-y-1">
-                                  <p className="font-semibold text-[#0B1527] text-lg leading-none">{f.nom}</p>
-                                  <p className="text-sm text-zinc-500 leading-none">Accès illimité aux ressources</p>
-                                </div>
+                              <div className="space-y-1">
+                                <p className="font-bold text-[#0B1527] text-sm leading-tight line-clamp-2">{f.nom}</p>
+                                <p className="text-[10px] text-zinc-500 leading-none">
+                                  {(f as any).duree || "Accès illimité"}
+                                </p>
                               </div>
-                              <div className="font-bold text-blue-600 text-xl whitespace-nowrap">
+                              <div className="font-black text-blue-600 text-lg mt-2">
                                 ${f.prix}
                               </div>
                             </div>
                           )
                         })}
                       </div>
+                      
+                      {formations.length > 4 && (
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="w-full mt-4 text-blue-600 font-bold hover:bg-blue-50"
+                          onClick={() => setShowAllFormations(!showAllFormations)}
+                        >
+                          {showAllFormations ? "Voir moins" : "Voir plus de formations"}
+                        </Button>
+                      )}
+                      
                       <FormMessage className="mt-4 block" />
                     </FormItem>
                   )}
@@ -370,6 +391,24 @@ export function RegistrationForm({
                     </FormItem>
                   )}
                 />
+
+                {/* Display Installments (Tranches) */}
+                {selectedFormation?.tranches && (Array.isArray((selectedFormation as any).tranches)) && ((selectedFormation as any).tranches as any[]).length > 0 && (
+                  <div className="bg-zinc-50 rounded-xl p-4 border border-zinc-100 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
+                    <h3 className="text-sm font-bold text-zinc-700 flex items-center">
+                      <div className="w-1 h-4 bg-blue-600 rounded-full mr-2" />
+                      Modalités de paiement par tranches
+                    </h3>
+                    <div className="grid grid-cols-2 gap-3">
+                      {((selectedFormation as any).tranches as any[]).map((tranche, idx) => (
+                        <div key={idx} className="flex items-center justify-between bg-white border border-zinc-200 rounded-lg p-2 px-3">
+                          <span className="text-xs text-zinc-500 font-medium whitespace-nowrap">Tranche {idx + 1}</span>
+                          <span className="text-sm font-bold text-blue-600">${tranche}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 <FormField
                   control={form.control}
@@ -487,17 +526,33 @@ export function RegistrationForm({
                 Suivant
               </Button>
             ) : (
-              <Button 
-                type="submit" 
-                disabled={isSubmitting} 
-                className="w-full h-14 text-lg rounded-xl bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all hover:scale-[1.02]"
-              >
-                {isSubmitting ? (
-                  <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Traitement en cours...</>
-                ) : (
-                  "Valider mon inscription"
-                )}
-              </Button>
+              <div className="flex gap-3">
+                <Button 
+                  type="button" 
+                  variant="outline"
+                  onClick={() => {
+                    form.reset()
+                    setStep(1)
+                    setUploadUrl(null)
+                    setUploadedFile(null)
+                  }}
+                  className="flex-1 h-14 text-lg rounded-xl border-zinc-200 text-zinc-600 hover:bg-zinc-50"
+                  disabled={isSubmitting}
+                >
+                  Annuler
+                </Button>
+                <Button 
+                  type="submit" 
+                  disabled={isSubmitting} 
+                  className="flex-[2] h-14 text-lg rounded-xl bg-blue-600 hover:bg-blue-700 shadow-lg shadow-blue-500/30 transition-all hover:scale-[1.02]"
+                >
+                  {isSubmitting ? (
+                    <><Loader2 className="mr-2 h-5 w-5 animate-spin" /> Traitement...</>
+                  ) : (
+                    "Confirmer"
+                  )}
+                </Button>
+              </div>
             )}
           </div>
         </form>

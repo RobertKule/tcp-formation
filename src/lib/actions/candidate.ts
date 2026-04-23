@@ -35,6 +35,22 @@ export async function createCandidate(formData: z.infer<typeof candidateSchema>)
     const validatedData = candidateSchema.parse(formData)
     let { montant, modePaiement, capturePaiementUrl, ...candidatInfo } = validatedData
 
+    // Fetch formation for naming
+    const formation = await prisma.formation.findUnique({
+      where: { id: candidatInfo.formationId }
+    })
+
+    if (!formation) throw new Error("Formation non trouvée")
+
+    // Generate Matricule
+    const count = await prisma.candidat.count({
+      where: { formationId: formation.id }
+    })
+    const sequence = (count + 1).toString().padStart(2, '0')
+    // Nettoyer le nom de la formation pour le matricule (pas d'espaces, pas de caractères spéciaux)
+    const formationCode = formation.nom.split(' ')[0].replace(/[^a-zA-Z0-9]/g, '')
+    const matricule = `TCP-${formationCode}-${sequence}`
+
     // Upload picture securely if a base64 blob was sent
     if (capturePaiementUrl && capturePaiementUrl.startsWith("data:image")) {
       try {
@@ -48,53 +64,44 @@ export async function createCandidate(formData: z.infer<typeof candidateSchema>)
       }
     }
 
-    // 1. Créer le candidat
+    // 1. Créer le candidat (toujours PENDING au début car le paiement n'est pas encore approuvé)
     const newCandidate = await prisma.candidat.create({
       data: {
         ...candidatInfo,
+        matricule: matricule as string,
         statut: CANDIDATE_STATUS.PENDING as any,
       },
       include: { formation: true }
     }) as Prisma.CandidatGetPayload<{ include: { formation: true } }>
 
-    let result = newCandidate
-
-    // 2. Créer le paiement initial si présent
+    // 2. Créer le paiement initial si présent (toujours PENDING)
     if ((montant !== undefined && montant > 0) || (capturePaiementUrl)) {
       await prisma.payment.create({
         data: {
           amount: montant ?? 0,
           paymentMode: modePaiement as any,
           captureUrl: capturePaiementUrl,
-          candidatId: newCandidate.id
+          candidatId: newCandidate.id,
+          statut: "PENDING" as any
         }
       })
-
-      // Mettre à jour le statut
-      const status = (montant && montant >= newCandidate.formation.prix)
-        ? CANDIDATE_STATUS.FULLY_PAID 
-        : CANDIDATE_STATUS.PARTIALLY_PAID
-      
-      result = await prisma.candidat.update({
-        where: { id: newCandidate.id },
-        data: { statut: status as any },
-        include: { formation: true }
-      }) as Prisma.CandidatGetPayload<{ include: { formation: true } }>
+      // Note: Le statut du candidat reste PENDING jusqu'à validation du paiement par l'admin
     }
 
     // Envoyer email au candidat
     await resend.emails.send({
       from: "Formation Platform <onboarding@resend.dev>",
-      to: result.email,
+      to: newCandidate.email,
       subject: "Confirmation d'inscription",
-      html: `<p>Bonjour ${result.prenom || ""} ${result.nom},</p>
-             <p>Votre inscription à la formation <strong>${result.formation.nom}</strong> a bien été reçue.</p>
-             <p>Statut actuel : <strong>${result.statut}</strong></p>
+      html: `<p>Bonjour ${newCandidate.prenom || ""} ${newCandidate.nom},</p>
+             <p>Votre inscription à la formation <strong>${newCandidate.formation.nom}</strong> a bien été reçue.</p>
+             <p>Votre matricule est : <strong>${matricule}</strong></p>
+             <p>Veuillez noter que votre inscription sera validée dès confirmation de votre paiement par l'administration.</p>
              <p>Bienvenue parmi nous !</p>`,
     })
 
     revalidatePath("/admin")
-    return { success: true, data: result }
+    return { success: true, data: newCandidate }
   } catch (error) {
     console.error("Error creating candidate:", error)
     return { success: false, error: "Une erreur est survenue lors de l'inscription." }
@@ -152,5 +159,37 @@ export async function deleteCandidate(candidateId: string) {
   } catch (error) {
     console.error("Error deleting candidate:", error)
     return { success: false, error: "Erreur lors de la suppression." }
+  }
+}
+
+export async function assignMatricule(candidateId: string) {
+  try {
+    const candidate = await prisma.candidat.findUnique({
+      where: { id: candidateId },
+      include: { formation: true }
+    })
+
+    if (!candidate) return { success: false, error: "Candidat non trouvé" }
+    if ((candidate as any).matricule) return { success: true, message: "Déjà attribué" }
+
+    // Logic similar to createCandidate
+    const count = await prisma.candidat.count({
+      where: { formationId: candidate.formationId, NOT: { matricule: null } } as any
+    })
+    
+    const sequence = (count + 1).toString().padStart(2, '0')
+    const formationCode = candidate.formation.nom.split(' ')[0].replace(/[^a-zA-Z0-9]/g, '')
+    const matricule = `TCP-${formationCode}-${sequence}`
+
+    await prisma.candidat.update({
+      where: { id: candidateId },
+      data: { matricule: matricule as any }
+    })
+
+    revalidatePath("/admin")
+    return { success: true, matricule }
+  } catch (error) {
+    console.error("Error assigning matricule:", error)
+    return { success: false, error: "Erreur lors de la génération" }
   }
 }

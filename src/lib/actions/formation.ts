@@ -8,6 +8,8 @@ const formationSchema = z.object({
   nom: z.string().min(2, "Le nom est requis"),
   description: z.string().optional(),
   prix: z.number().min(0, "Le prix doit être positif"),
+  duree: z.string().optional(),
+  tranches: z.array(z.number()).optional(),
 })
 
 export async function createFormation(formData: z.infer<typeof formationSchema>) {

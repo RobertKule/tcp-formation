@@ -106,8 +106,11 @@ export function AddPaymentDialog({ candidatId, candidatName, remainingAmount }: 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true)
     const res = await addPayment({
-      ...values,
+      amount: values.amount,
+      paymentMode: values.paymentMode,
+      captureUrl: values.captureUrl,
       candidatId,
+      statut: "PENDING"
     })
     setIsSubmitting(false)
     if (res.success) {

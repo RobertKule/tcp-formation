@@ -1,74 +1,103 @@
 "use server"
 
 import { prisma } from "@/lib/prisma"
-import { z } from "zod"
 import { revalidatePath } from "next/cache"
-import { CANDIDATE_STATUS, PAYMENT_MODE } from "../constants"
+import { CANDIDATE_STATUS } from "../constants"
+import { Resend } from "resend"
 
-const paymentSchema = z.object({
-  candidatId: z.string(),
-  amount: z.number().positive("Le montant doit être supérieur à 0"),
-  paymentMode: z.enum([PAYMENT_MODE.CASH, PAYMENT_MODE.MOBILE_MONEY]),
-  captureUrl: z.string().optional(),
-  adminId: z.string().optional(),
-})
+const resend = new Resend(process.env.RESEND_API_KEY)
 
-export async function addPayment(data: z.infer<typeof paymentSchema>) {
+export async function addPayment(data: { 
+  amount: number; 
+  paymentMode: string; 
+  captureUrl?: string; 
+  candidatId: string;
+  statut?: string;
+}) {
   try {
-    const { candidatId, amount, paymentMode, captureUrl, adminId } = paymentSchema.parse(data)
-
-    // 1. Récupérer le candidat et sa formation
-    const candidate = await prisma.candidat.findUnique({
-      where: { id: candidatId },
-      include: { 
-        formation: true,
-        payments: true 
-      }
-    })
-
-    if (!candidate) throw new Error("Candidat non trouvé")
-
-    // 2. Calculer le total déjà payé
-    const totalPaid = candidate.payments.reduce((sum: number, p: any) => sum + p.amount, 0)
-    const totalPrice = candidate.formation.prix
-    const remaining = totalPrice - totalPaid
-
-    // 3. Validation de versement (Règle 1)
-    if (amount > remaining) {
-      throw new Error(`Le montant (${amount}$) dépasse le reste à payer (${remaining}$)`)
-    }
-
-    // 4. Créer le paiement
-    const newPayment = await prisma.payment.create({
+    const payment = await prisma.payment.create({
       data: {
-        amount,
-        paymentMode,
-        captureUrl,
-        adminId,
-        candidatId
+        amount: data.amount,
+        paymentMode: data.paymentMode,
+        captureUrl: data.captureUrl,
+        candidatId: data.candidatId,
+        statut: data.statut || "PENDING"
+      }
+    })
+    revalidatePath("/admin")
+    return { success: true, data: payment }
+  } catch (error) {
+    console.error("Error adding payment:", error)
+    return { success: false, error: "Erreur lors de l'ajout du paiement." }
+  }
+}
+
+export async function validatePayment(paymentId: string, status: "APPROVED" | "REJECTED", commentaire?: string) {
+  try {
+    const payment = await prisma.payment.update({
+      where: { id: paymentId },
+      data: { 
+        statut: status,
+        commentaire: commentaire 
+      },
+      include: {
+        candidat: {
+          include: {
+            formation: true,
+            payments: true
+          }
+        }
       }
     })
 
-    // 5. Mettre à jour le statut du candidat (Règle 2)
-    const newTotalPaid = totalPaid + amount
-    let newStatus = candidate.statut
+    const candidate = payment.candidat
+    const formation = candidate.formation
 
-    if (newTotalPaid >= totalPrice) {
-      newStatus = CANDIDATE_STATUS.FULLY_PAID
-    } else if (newTotalPaid > 0) {
-      newStatus = CANDIDATE_STATUS.PARTIALLY_PAID
-    }
-
-    await prisma.candidat.update({
-      where: { id: candidatId },
-      data: { statut: newStatus as any }
+    // Recalculer le statut du candidat en fonction des paiements APPROUVÉS
+    const allApprovedPayments = await prisma.payment.findMany({
+      where: { 
+        candidatId: candidate.id,
+        statut: "APPROVED"
+      }
     })
 
-    return { success: true, data: newPayment }
-  } catch (error: any) {
-    console.error("Payment error:", error)
-    return { success: false, error: error.message || "Erreur lors du paiement" }
-  } finally {
+    const totalPaid = allApprovedPayments.reduce((sum, p) => sum + p.amount, 0)
+    
+    let newStatus = candidate.statut
+    if (totalPaid >= formation.prix) {
+      newStatus = CANDIDATE_STATUS.FULLY_PAID
+    } else if (totalPaid > 0) {
+      newStatus = CANDIDATE_STATUS.PARTIALLY_PAID
+    } else {
+        newStatus = CANDIDATE_STATUS.PENDING
+    }
+
+    if (newStatus !== candidate.statut) {
+      await prisma.candidat.update({
+        where: { id: candidate.id },
+        data: { statut: newStatus as any }
+      })
+    }
+
+    // Email notification
+    try {
+        await resend.emails.send({
+          from: "Formation Platform <onboarding@resend.dev>",
+          to: candidate.email,
+          subject: status === "APPROVED" ? "Paiement validé" : "Paiement rejeté",
+          html: `<p>Bonjour ${candidate.nom},</p>
+                 <p>Votre paiement de <strong>${payment.amount} $</strong> a été ${status === "APPROVED" ? "validé" : "rejeté"}.</p>
+                 ${commentaire ? `<p>Commentaire de l'admin : ${commentaire}</p>` : ""}
+                 <p>Statut actuel de votre dossier : <strong>${newStatus}</strong></p>`,
+        })
+    } catch (emailError) {
+        console.error("Email notification error:", emailError)
+    }
+
     revalidatePath("/admin")
+    return { success: true }
+  } catch (error) {
+    console.error("Error validating payment:", error)
+    return { success: false, error: "Erreur lors de la validation du paiement." }
   }
 }

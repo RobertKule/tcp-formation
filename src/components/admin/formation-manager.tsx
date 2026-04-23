@@ -47,12 +47,15 @@ const formSchema = z.object({
   nom: z.string().min(2, "Le nom est requis"),
   description: z.string().optional(),
   prix: z.number().min(0, "Le prix doit être positif"),
+  duree: z.string().optional(),
+  tranches: z.array(z.number()).optional(),
 })
 
 export function FormationManager({ formations }: { formations: Formation[] }) {
   const [editingId, setEditingId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [sortConfig, setSortConfig] = useState<{ key: "nom" | "prix", direction: "asc" | "desc" } | null>(null)
+  const [tranches, setTranches] = useState<number[]>([])
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -60,22 +63,26 @@ export function FormationManager({ formations }: { formations: Formation[] }) {
       nom: "",
       description: "",
       prix: 0,
+      duree: "",
+      tranches: [],
     },
   })
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true)
+    const dataToSend = { ...values, tranches }
     let res
     if (editingId) {
-      res = await updateFormation(editingId, values)
+      res = await updateFormation(editingId, dataToSend)
     } else {
-      res = await createFormation(values)
+      res = await createFormation(dataToSend)
     }
     setIsSubmitting(false)
 
     if (res.success) {
       toast.success(editingId ? "Formation mise à jour avec succès !" : "Nouvelle formation créée !")
       form.reset()
+      setTranches([])
       setEditingId(null)
     } else {
       toast.error(res.error)
@@ -87,6 +94,10 @@ export function FormationManager({ formations }: { formations: Formation[] }) {
     form.setValue("nom", formation.nom)
     form.setValue("description", formation.description || "")
     form.setValue("prix", formation.prix)
+    form.setValue("duree", formation.duree || "")
+    const tranchesData = (formation.tranches as number[]) || []
+    setTranches(tranchesData)
+    form.setValue("tranches", tranchesData)
   }
 
   const handleDelete = async (id: string) => {
@@ -169,7 +180,7 @@ export function FormationManager({ formations }: { formations: Formation[] }) {
                 name="prix"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Prix ($)</FormLabel>
+                    <FormLabel>Prix Total ($)</FormLabel>
                     <FormControl>
                       <Input 
                         type="number" 
@@ -185,6 +196,75 @@ export function FormationManager({ formations }: { formations: Formation[] }) {
                   </FormItem>
                 )}
               />
+              <FormField
+                control={form.control}
+                name="duree"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Durée de la formation</FormLabel>
+                    <FormControl>
+                      <Input placeholder="Ex: 3 mois, 45 jours..." {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+
+              <div className="space-y-4 pt-2">
+                <FormLabel>Tranches de paiement</FormLabel>
+                <div className="flex gap-2">
+                  <Input 
+                    type="number" 
+                    id="new-tranche"
+                    placeholder="Montant tranche" 
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter') {
+                        e.preventDefault()
+                        const input = e.currentTarget
+                        const val = parseFloat(input.value)
+                        if (!isNaN(val)) {
+                          setTranches([...tranches, val])
+                          input.value = ''
+                        }
+                      }
+                    }}
+                  />
+                  <Button 
+                    type="button" 
+                    variant="outline" 
+                    onClick={() => {
+                        const input = document.getElementById('new-tranche') as HTMLInputElement
+                        const val = parseFloat(input.value)
+                        if (!isNaN(val)) {
+                          setTranches([...tranches, val])
+                          input.value = ''
+                        }
+                    }}
+                  >
+                    Ajouter
+                  </Button>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {tranches.map((t, idx) => (
+                    <div key={idx} className="bg-blue-50 text-blue-700 px-3 py-1 rounded-full text-sm border border-blue-100 flex items-center gap-2">
+                      <span>{t} $</span>
+                      <button 
+                        type="button" 
+                        onClick={() => setTranches(tranches.filter((_, i) => i !== idx))}
+                        className="text-blue-400 hover:text-blue-600 font-bold"
+                      >
+                        ×
+                      </button>
+                    </div>
+                  ))}
+                  {tranches.length === 0 && <p className="text-xs text-zinc-400 italic">Aucune tranche définie.</p>}
+                </div>
+                {tranches.length > 0 && (
+                   <p className="text-xs font-semibold text-zinc-500">
+                     Total tranches: {tranches.reduce((a, b) => a + b, 0)} $
+                   </p>
+                )}
+              </div>
               <div className="flex gap-2">
                 <Button type="submit" className="flex-1" disabled={isSubmitting}>
                   {isSubmitting && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
@@ -264,6 +344,27 @@ export function FormationManager({ formations }: { formations: Formation[] }) {
                             <div>
                                <h3 className="text-sm font-semibold text-zinc-500">Tarif</h3>
                                <p className="text-2xl font-bold text-blue-600">${f.prix}</p>
+                            </div>
+                            <div className="h-px w-full bg-zinc-100" />
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <h3 className="text-sm font-semibold text-zinc-500">Durée</h3>
+                                <p className="text-base font-medium">{f.duree || "Non définie"}</p>
+                              </div>
+                              <div>
+                                <h3 className="text-sm font-semibold text-zinc-500">Tranches</h3>
+                                <div className="flex flex-wrap gap-1 mt-1">
+                                  {Array.isArray(f.tranches) && (f.tranches as number[]).length > 0 ? (
+                                    (f.tranches as number[]).map((t, i) => (
+                                      <span key={i} className="bg-zinc-100 text-zinc-700 px-2 py-0.5 rounded text-xs border border-zinc-200">
+                                        {t} $
+                                      </span>
+                                    ))
+                                  ) : (
+                                    <span className="text-xs text-secondary-foreground italic">Aucune</span>
+                                  )}
+                                </div>
+                              </div>
                             </div>
                             <div className="text-xs text-zinc-400 mt-4 text-right">
                                Créée le {new Date(f.createdAt).toLocaleDateString("fr-FR")}

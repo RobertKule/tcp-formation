@@ -12,6 +12,8 @@ model Formation {
   nom         String
   description String?
   prix        Float
+  duree       String?
+  tranches    Json?
   createdAt   DateTime   @default(now())
   updatedAt   DateTime   @updatedAt
   candidats   Candidat[]
@@ -19,6 +21,7 @@ model Formation {
 
 model Candidat {
   id          String    @id @default(cuid())
+  matricule   String?   @unique
   nom         String
   postnom     String
   prenom      String?
@@ -38,10 +41,37 @@ model Payment {
   amount      Float
   datePayment DateTime @default(now())
   paymentMode String
+  statut      String   @default("PENDING")
   captureUrl  String?
+  commentaire String?
   adminId     String?
   candidatId  String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   candidat    Candidat @relation(fields: [candidatId], references: [id])
+}
+
+model CashEntry {
+  id            String   @id @default(cuid())
+  date          DateTime @default(now())
+  accountNumber String?
+  label         String
+  amount        Float
+  beneficiary   String?
+  type          String   // ENTREE or SORTIE
+  balance       Float    @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model SiteSettings {
+  id           String   @id @default("global")
+  address      String   @default("Route Sake, Avenu Masisi, Q. Katindo, Goma / Nord-Kivu (RDC)")
+  phonePrimary String   @default("+243 820 455 153")
+  phoneSecondary String @default("+243 998 781 608")
+  email        String   @default("contact@tcpsarl.cd")
+  webUrl       String   @default("www.tcpsarl.cd")
+  latitude     Float    @default(-1.5397)
+  longitude    Float    @default(29.0213)
+  updatedAt    DateTime @updatedAt
 }
