@@ -17,8 +17,9 @@ export const metadata: Metadata = {
   title: "TCP Formation - Formations Professionnelles de Pointe",
   description: "Rejoignez nos programmes intensifs et développez des compétences de pointe pour booster votre carrière avec TCP Formation",
   icons: {
-    icon: '/icon.png',
+    icon: '/favicon.ico',
     apple: '/apple-icon.png',
+    shortcut: '/favicon.ico',
   },
 };
 
