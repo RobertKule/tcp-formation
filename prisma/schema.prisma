@@ -1,0 +1,47 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model Formation {
+  id          String     @id @default(cuid())
+  nom         String
+  description String?
+  prix        Float
+  createdAt   DateTime   @default(now())
+  updatedAt   DateTime   @updatedAt
+  candidats   Candidat[]
+}
+
+model Candidat {
+  id          String    @id @default(cuid())
+  nom         String
+  postnom     String
+  prenom      String?
+  adresse     String?
+  telephone   String
+  email       String
+  statut      String    @default("PENDING")
+  formationId String
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  formation   Formation @relation(fields: [formationId], references: [id])
+  payments    Payment[]
+}
+
+model Payment {
+  id          String   @id @default(cuid())
+  amount      Float
+  datePayment DateTime @default(now())
+  paymentMode String
+  captureUrl  String?
+  adminId     String?
+  candidatId  String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  candidat    Candidat @relation(fields: [candidatId], references: [id])
+}
