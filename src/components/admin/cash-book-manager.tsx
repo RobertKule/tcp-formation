@@ -3,6 +3,8 @@
 import { useState, useMemo } from "react"
 import { format } from "date-fns"
 import { fr } from "date-fns/locale"
+import jsPDF from 'jspdf'
+import Image from 'next/image'
 import { 
   Table, 
   TableBody, 
@@ -25,7 +27,9 @@ import {
   Eye,
   ArrowUpDown,
   Filter,
-  Calendar as CalendarIcon
+  Calendar as CalendarIcon,
+  FileText,
+  FileSpreadsheet
 } from "lucide-react"
 import { type CashEntry } from "@prisma/client"
 import { CashCharts } from "./cash-charts"
@@ -45,6 +49,11 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
     key: "date",
     direction: "desc"
   })
+
+  // Fonction pour formater les nombres correctement
+  const formatCurrency = (amount: number) => {
+    return amount.toLocaleString('fr-FR').replace(/[\s\u00A0]/g, ' ')
+  }
 
   const filteredEntries = useMemo(() => {
     return entries
@@ -72,6 +81,297 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
     }))
   }
 
+  const generatePDFReport = (entries: CashEntry[]) => {
+    // Créer un nouveau document PDF
+    const doc = new jsPDF()
+    const pageWidth = doc.internal.pageSize.getWidth()
+    const pageHeight = doc.internal.pageSize.getHeight()
+    const margin = 20
+    let yPosition = margin
+    
+    // Couleurs personnalisées
+    const primaryColor = [59, 130, 246] // blue-500
+    const successColor = [34, 197, 94] // green-500
+    const dangerColor = [239, 68, 68] // red-500
+    const grayColor = [107, 114, 128] // gray-500
+    
+    // Ajouter le logo en haut à gauche
+    try {
+      // Charger le logo comme une URL
+      const logoUrl = '/LogoTCP.jpeg'
+      doc.addImage(logoUrl, 'JPEG', margin, margin, 35, 25)
+    } catch (error) {
+      console.log('Erreur lors de l\'ajout du logo:', error)
+      // Ajouter un texte de remplacement si le logo ne fonctionne pas
+      doc.setFontSize(16)
+      doc.setFont('helvetica', 'bold')
+      doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2])
+      doc.text('TCP', margin, margin + 15)
+    }
+    
+    // Titre du rapport avec couleur
+    doc.setFontSize(24)
+    doc.setFont('helvetica', 'bold')
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2])
+    doc.text('Rapport de Journal de Caisse', pageWidth / 2, yPosition + 10, { align: 'center' })
+    yPosition += 25
+    
+    // Cadre pour les informations générales
+    doc.setDrawColor(grayColor[0], grayColor[1], grayColor[2])
+    doc.setFillColor(249, 250, 251) // gray-50
+    doc.roundedRect(margin, yPosition, pageWidth - 2 * margin, 35, 3, 3, 'FD')
+    
+    // Informations générales
+    doc.setTextColor(0, 0, 0)
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Informations générales', margin + 5, yPosition + 8)
+    
+    doc.setFont('helvetica', 'normal')
+    doc.setFontSize(11)
+    doc.text(`Période: ${format(new Date(), "dd/MM/yyyy", { locale: fr })}`, margin + 5, yPosition + 18)
+    doc.text(`Nombre d'entrées: ${entries.length}`, margin + 5, yPosition + 28)
+    yPosition += 45
+    
+    // Cadre pour le résumé financier avec couleurs
+    doc.setDrawColor(grayColor[0], grayColor[1], grayColor[2])
+    doc.setFillColor(249, 250, 251)
+    doc.roundedRect(margin, yPosition, pageWidth - 2 * margin, 50, 3, 3, 'FD')
+    
+    doc.setFont('helvetica', 'bold')
+    doc.setFontSize(14)
+    doc.setTextColor(0, 0, 0)
+    doc.text('Résumé financier', margin + 5, yPosition + 10)
+    
+    doc.setFontSize(12)
+    doc.setFont('helvetica', 'normal')
+    
+    // Total Entrées en vert
+    doc.setTextColor(successColor[0], successColor[1], successColor[2])
+    doc.text(`Total Entrées: ${formatCurrency(totalEntrees)} $`, margin + 5, yPosition + 25)
+    
+    // Total Sorties en rouge
+    doc.setTextColor(dangerColor[0], dangerColor[1], dangerColor[2])
+    doc.text(`Total Sorties: ${formatCurrency(totalSorties)} $`, margin + 5, yPosition + 35)
+    
+    // Solde Actuel en bleu
+    doc.setTextColor(primaryColor[0], primaryColor[1], primaryColor[2])
+    doc.setFont('helvetica', 'bold')
+    doc.text(`Solde Actuel: ${formatCurrency(currentBalance)} $`, margin + 5, yPosition + 45)
+    
+    yPosition += 60
+    
+    // En-tête du tableau
+    doc.setFontSize(16)
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', 'bold')
+    doc.text('Détail des transactions', margin, yPosition)
+    yPosition += 15
+    
+    // En-têtes du tableau avec fond coloré
+    const headers = ['Date', 'Compte', 'Libellé', 'Type', 'Montant', 'Solde']
+    const columnWidths = [25, 25, 45, 20, 30, 25]
+    const tableWidth = columnWidths.reduce((a, b) => a + b, 0)
+    const startX = (pageWidth - tableWidth) / 2
+    
+    // Fond pour les en-têtes
+    doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2])
+    doc.roundedRect(startX, yPosition - 5, tableWidth, 10, 2, 2, 'F')
+    
+    // Texte des en-têtes en blanc
+    doc.setTextColor(255, 255, 255)
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'bold')
+    let xPos = startX
+    
+    headers.forEach((header, index) => {
+      doc.text(header, xPos + 2, yPosition)
+      xPos += columnWidths[index]
+    })
+    yPosition += 8
+    
+    // Bordure du tableau
+    doc.setDrawColor(grayColor[0], grayColor[1], grayColor[2])
+    doc.rect(startX, yPosition - 13, tableWidth, 8, 'S')
+    
+    // Données du tableau avec alternance de couleurs
+    doc.setTextColor(0, 0, 0)
+    doc.setFont('helvetica', 'normal')
+    
+    entries.forEach((entry, index) => {
+      // Vérifier si on a besoin d'une nouvelle page
+      if (yPosition > pageHeight - 40) {
+        doc.addPage()
+        yPosition = margin + 20
+        
+        // Répéter les en-têtes sur la nouvelle page
+        doc.setFillColor(primaryColor[0], primaryColor[1], primaryColor[2])
+        doc.roundedRect(startX, yPosition - 5, tableWidth, 10, 2, 2, 'F')
+        
+        doc.setTextColor(255, 255, 255)
+        doc.setFontSize(10)
+        doc.setFont('helvetica', 'bold')
+        xPos = startX
+        headers.forEach((header, index) => {
+          doc.text(header, xPos + 2, yPosition)
+          xPos += columnWidths[index]
+        })
+        yPosition += 8
+        doc.setDrawColor(grayColor[0], grayColor[1], grayColor[2])
+        doc.rect(startX, yPosition - 13, tableWidth, 8, 'S')
+        doc.setTextColor(0, 0, 0)
+        doc.setFont('helvetica', 'normal')
+      }
+      
+      // Fond alterné pour les lignes
+      if (index % 2 === 0) {
+        doc.setFillColor(249, 250, 251)
+        doc.rect(startX, yPosition - 2, tableWidth, 8, 'F')
+      }
+      
+      xPos = startX
+      const rowData = [
+        format(new Date(entry.date), "dd/MM/yyyy", { locale: fr }),
+        entry.accountNumber || "-",
+        entry.label,
+        entry.type,
+        `${entry.type === "ENTREE" ? "+" : ""}${formatCurrency(entry.amount)} $`,
+        `${formatCurrency(entry.balance)} $`
+      ]
+      
+      let additionalHeight = 0 // Déclarer ici pour être accessible après la boucle
+      
+      // Couleur pour le type et le montant
+      rowData.forEach((data, colIndex) => {
+        if (colIndex === 3) { // Type
+          const color = entry.type === "ENTREE" ? successColor : dangerColor
+          doc.setTextColor(color[0], color[1], color[2])
+          doc.setFont('helvetica', 'bold')
+        } else if (colIndex === 4) { // Montant
+          const color = entry.type === "ENTREE" ? successColor : dangerColor
+          doc.setTextColor(color[0], color[1], color[2])
+        } else {
+          doc.setTextColor(0, 0, 0)
+          doc.setFont('helvetica', 'normal')
+        }
+        
+        // Gérer le retour à la ligne pour le libellé (colonne 2)
+        if (colIndex === 2 && data.length > 25) {
+          const words = data.split(' ')
+          let line = ''
+          let currentY = yPosition + 5
+          let linesCount = 1
+          
+          for (let i = 0; i < words.length; i++) {
+            const testLine = line + words[i] + ' '
+            if (testLine.length > 25) {
+              if (line !== '') {
+                doc.text(line.trim(), xPos + 2, currentY)
+                line = words[i] + ' '
+                currentY += 5
+                linesCount++
+              } else {
+                // Mot trop long, le couper
+                doc.text(words[i].substring(0, 22) + '...', xPos + 2, currentY)
+                line = ''
+                currentY += 5
+                linesCount++
+              }
+            } else {
+              line = testLine
+            }
+          }
+          if (line !== '') {
+            doc.text(line.trim(), xPos + 2, currentY)
+          }
+          
+          // Calculer la hauteur supplémentaire nécessaire
+          additionalHeight = (linesCount - 1) * 5
+        } else {
+          doc.text(data, xPos + 2, yPosition + 5)
+        }
+        
+        xPos += columnWidths[colIndex]
+      })
+      
+      // Ajouter les bordures verticales pour chaque colonne
+      doc.setDrawColor(grayColor[0], grayColor[1], grayColor[2])
+      doc.setLineWidth(0.3)
+      
+      // Bordure gauche de la ligne
+      doc.line(startX, yPosition - 2, startX, yPosition + 6 + additionalHeight)
+      
+      // Bordures entre les colonnes
+      let borderX = startX
+      for (let i = 0; i < columnWidths.length - 1; i++) {
+        borderX += columnWidths[i]
+        doc.line(borderX, yPosition - 2, borderX, yPosition + 6 + additionalHeight)
+      }
+      
+      // Bordure droite de la ligne
+      doc.line(startX + tableWidth, yPosition - 2, startX + tableWidth, yPosition + 6 + additionalHeight)
+      
+      // Bordure inférieure de la ligne
+      doc.line(startX, yPosition + 6 + additionalHeight, startX + tableWidth, yPosition + 6 + additionalHeight)
+      
+      // Ajuster la hauteur de la ligne selon le contenu
+      yPosition += 8 + additionalHeight
+    })
+    
+    // Pied de page avec bordure
+    const footerY = pageHeight - 20
+    doc.setDrawColor(grayColor[0], grayColor[1], grayColor[2])
+    doc.setLineWidth(0.5)
+    doc.line(margin, footerY, pageWidth - margin, footerY)
+    
+    doc.setFontSize(10)
+    doc.setFont('helvetica', 'italic')
+    doc.setTextColor(grayColor[0], grayColor[1], grayColor[2])
+    doc.text(`Généré le: ${format(new Date(), "dd/MM/yyyy HH:mm:ss", { locale: fr })}`, margin, footerY + 10)
+    doc.text('Page 1 sur 1', pageWidth - margin - 30, footerY + 10)
+    
+    // Télécharger le PDF
+    doc.save(`rapport-caisse-${format(new Date(), "yyyy-MM-dd")}.pdf`)
+  }
+
+  const generateExcelReport = (entries: CashEntry[]) => {
+    // Créer le contenu CSV (format compatible Excel)
+    const headers = ["Date", "Compte", "Libellé", "Type", "Montant", "Solde"]
+    const csvContent = [
+      headers.join(","),
+      ...entries.map(entry => [
+        format(new Date(entry.date), "dd/MM/yyyy", { locale: fr }),
+        entry.accountNumber || "",
+        `"${entry.label.replace(/"/g, '""')}"`, // Échapper les guillemets
+        entry.type,
+        entry.amount,
+        entry.balance
+      ].join(","))
+    ].join("\n")
+
+    // Ajouter le résumé à la fin
+    const summary = [
+      "",
+      "RÉSUMÉ",
+      "Total Entrées," + totalEntrees,
+      "Total Sorties," + totalSorties,
+      "Solde Actuel," + currentBalance
+    ].join("\n")
+
+    const finalContent = csvContent + summary
+
+    // Créer un Blob et télécharger
+    const blob = new Blob([finalContent], { type: 'text/csv;charset=utf-8' })
+    const url = URL.createObjectURL(blob)
+    const link = document.createElement('a')
+    link.href = url
+    link.download = `rapport-caisse-${format(new Date(), "yyyy-MM-dd")}.csv`
+    document.body.appendChild(link)
+    link.click()
+    document.body.removeChild(link)
+    URL.revokeObjectURL(url)
+  }
+
 
   const totalEntrees = entries.filter(e => e.type === "ENTREE").reduce((sum, e) => sum + e.amount, 0)
   const totalSorties = entries.filter(e => e.type === "SORTIE").reduce((sum, e) => sum + e.amount, 0)
@@ -88,7 +388,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
               <TrendingUp className="w-5 h-5 text-green-600" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-zinc-900">${totalEntrees.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-zinc-900">{formatCurrency(totalEntrees)} $</p>
         </div>
         
         <div className="bg-white p-6 rounded-2xl border border-zinc-100 shadow-sm space-y-2">
@@ -98,7 +398,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
               <TrendingDown className="w-5 h-5 text-red-600" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-zinc-900">${totalSorties.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-zinc-900">{formatCurrency(totalSorties)} $</p>
         </div>
 
         <div className="bg-blue-600 p-6 rounded-2xl border border-blue-500 shadow-lg shadow-blue-200 space-y-2">
@@ -108,7 +408,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
               <PlusCircle className="w-5 h-5 text-white" />
             </div>
           </div>
-          <p className="text-2xl font-bold text-white">${currentBalance.toLocaleString()}</p>
+          <p className="text-2xl font-bold text-white">{formatCurrency(currentBalance)} $</p>
         </div>
       </div>
 
@@ -125,7 +425,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
             />
           </div>
           
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <Select value={typeFilter} onValueChange={(val: any) => setTypeFilter(val)}>
               <SelectTrigger className="h-11 w-[150px] border-zinc-200 rounded-xl">
                 <Filter className="w-4 h-4 mr-2 text-zinc-400" />
@@ -137,6 +437,24 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
                 <SelectItem value="SORTIE">Sorties</SelectItem>
               </SelectContent>
             </Select>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-11 px-4 border-zinc-200 rounded-xl hover:bg-zinc-50"
+              onClick={() => generatePDFReport(filteredEntries)}
+            >
+              <FileText className="w-4 h-4 mr-2 text-zinc-600" />
+              Rapport PDF
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              className="h-11 px-4 border-zinc-200 rounded-xl hover:bg-zinc-50"
+              onClick={() => generateExcelReport(filteredEntries)}
+            >
+              <FileSpreadsheet className="w-4 h-4 mr-2 text-zinc-600" />
+              Rapport Excel
+            </Button>
             <CashEntryDialog />
           </div>
         </div>
@@ -165,9 +483,13 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
                     {format(new Date(entry.date), "dd/MM/yyyy", { locale: fr })}
                   </TableCell>
                   <TableCell className="text-zinc-500 text-xs font-mono">{entry.accountNumber || "-"}</TableCell>
-                  <TableCell className="font-semibold text-zinc-900">{entry.label}</TableCell>
+                  <TableCell className="font-semibold text-zinc-900 max-w-xs align-top">
+                    <div className="break-words whitespace-normal leading-relaxed">
+                      {entry.label}
+                    </div>
+                  </TableCell>
                   <TableCell className={`text-right font-bold ${entry.type === "ENTREE" ? "text-green-600" : "text-red-600"}`}>
-                    {entry.type === "ENTREE" ? "+" : "-"}${entry.amount.toLocaleString()}
+                    {entry.type === "ENTREE" ? "+" : ""}{formatCurrency(entry.amount)} $
                   </TableCell>
                   <TableCell>
                     <Badge variant="outline" className={entry.type === "ENTREE" ? "bg-green-50 text-green-700 border-green-100" : "bg-red-50 text-red-700 border-red-100"}>
@@ -175,7 +497,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-medium text-zinc-500">
-                    ${entry.balance.toLocaleString()}
+                    {formatCurrency(entry.balance)} $
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
