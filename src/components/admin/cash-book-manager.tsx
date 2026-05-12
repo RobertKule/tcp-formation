@@ -45,6 +45,10 @@ interface CashBookManagerProps {
 export function CashBookManager({ entries }: CashBookManagerProps) {
   const [searchTerm, setSearchTerm] = useState("")
   const [typeFilter, setTypeFilter] = useState<string>("ALL")
+  const [dateRange, setDateRange] = useState<{ from: string; to: string }>({
+    from: "",
+    to: ""
+  })
   const [sortConfig, setSortConfig] = useState<{ key: keyof CashEntry; direction: "asc" | "desc" }>({
     key: "date",
     direction: "desc"
@@ -61,7 +65,25 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
         const matchesSearch = entry.label.toLowerCase().includes(searchTerm.toLowerCase()) || 
                              (entry.accountNumber?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
         const matchesType = typeFilter === "ALL" || entry.type === typeFilter
-        return matchesSearch && matchesType
+        
+        // Filtrage par plage de dates
+        let matchesDateRange = true
+        if (dateRange.from && dateRange.to) {
+          const entryDate = new Date(entry.date)
+          const fromDate = new Date(dateRange.from)
+          const toDate = new Date(dateRange.to)
+          matchesDateRange = entryDate >= fromDate && entryDate <= toDate
+        } else if (dateRange.from) {
+          const entryDate = new Date(entry.date)
+          const fromDate = new Date(dateRange.from)
+          matchesDateRange = entryDate >= fromDate
+        } else if (dateRange.to) {
+          const entryDate = new Date(entry.date)
+          const toDate = new Date(dateRange.to)
+          matchesDateRange = entryDate <= toDate
+        }
+        
+        return matchesSearch && matchesType && matchesDateRange
       })
       .sort((a, b) => {
         const valA = a[sortConfig.key]
@@ -73,7 +95,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
         if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1
         return 0
       })
-  }, [entries, searchTerm, typeFilter, sortConfig])
+  }, [entries, searchTerm, typeFilter, dateRange, sortConfig])
   const handleSort = (key: keyof CashEntry) => {
     setSortConfig(prev => ({
       key,
@@ -414,7 +436,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
 
       {/* Main Section */}
       <div className="bg-white p-6 lg:p-8 rounded-[1.5rem] shadow-[0_8px_30px_rgb(0,0,0,0.03)] border border-zinc-100 space-y-6">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
           <div className="flex-1 max-w-md relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
             <Input 
@@ -423,6 +445,43 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
             />
+          </div>
+          
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Filtre par plage de dates */}
+            <div className="flex items-center gap-2">
+              <div className="relative">
+                <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                <Input
+                  type="date"
+                  placeholder="Du..."
+                  className="pl-10 h-11 w-[140px] border-zinc-200 rounded-xl focus:ring-blue-500/20"
+                  value={dateRange.from}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, from: e.target.value }))}
+                />
+              </div>
+              <span className="text-zinc-400 text-sm">au</span>
+              <div className="relative">
+                <CalendarIcon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-zinc-400" />
+                <Input
+                  type="date"
+                  placeholder="Au..."
+                  className="pl-10 h-11 w-[140px] border-zinc-200 rounded-xl focus:ring-blue-500/20"
+                  value={dateRange.to}
+                  onChange={(e) => setDateRange(prev => ({ ...prev, to: e.target.value }))}
+                />
+              </div>
+              {(dateRange.from || dateRange.to) && (
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className="h-11 px-3 text-zinc-400 hover:text-red-600"
+                  onClick={() => setDateRange({ from: "", to: "" })}
+                >
+                  <Trash2 className="w-4 h-4" />
+                </Button>
+              )}
+            </div>
           </div>
           
           <div className="flex items-center gap-3 flex-wrap">
@@ -440,11 +499,20 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
             <Button 
               variant="outline" 
               size="sm" 
+              className="h-11 px-3 border-zinc-200 rounded-xl hover:bg-zinc-50"
+              onClick={() => handleSort("date")}
+            >
+              <CalendarIcon className="w-4 h-4 mr-2 text-zinc-600" />
+              Tri par date
+            </Button>
+            <Button 
+              variant="outline" 
+              size="sm" 
               className="h-11 px-4 border-zinc-200 rounded-xl hover:bg-zinc-50"
               onClick={() => generatePDFReport(filteredEntries)}
             >
               <FileText className="w-4 h-4 mr-2 text-zinc-600" />
-              Rapport PDF
+              Rapport PDF (trié)
             </Button>
             <Button 
               variant="outline" 
@@ -453,7 +521,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
               onClick={() => generateExcelReport(filteredEntries)}
             >
               <FileSpreadsheet className="w-4 h-4 mr-2 text-zinc-600" />
-              Rapport Excel
+              Rapport Excel (trié)
             </Button>
             <CashEntryDialog />
           </div>
