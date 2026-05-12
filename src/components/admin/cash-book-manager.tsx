@@ -60,42 +60,63 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
   }
 
   const filteredEntries = useMemo(() => {
-    return entries
-      .filter(entry => {
-        const matchesSearch = entry.label.toLowerCase().includes(searchTerm.toLowerCase()) || 
-                             (entry.accountNumber?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
-        const matchesType = typeFilter === "ALL" || entry.type === typeFilter
-        
-        // Filtrage par plage de dates
-        let matchesDateRange = true
-        if (dateRange.from && dateRange.to) {
-          const entryDate = new Date(entry.date)
-          const fromDate = new Date(dateRange.from)
-          const toDate = new Date(dateRange.to)
-          matchesDateRange = entryDate >= fromDate && entryDate <= toDate
-        } else if (dateRange.from) {
-          const entryDate = new Date(entry.date)
-          const fromDate = new Date(dateRange.from)
-          matchesDateRange = entryDate >= fromDate
-        } else if (dateRange.to) {
-          const entryDate = new Date(entry.date)
-          const toDate = new Date(dateRange.to)
-          matchesDateRange = entryDate <= toDate
-        }
-        
-        return matchesSearch && matchesType && matchesDateRange
-      })
-      .sort((a, b) => {
-        const valA = a[sortConfig.key]
-        const valB = b[sortConfig.key]
-        
-        if (!valA || !valB) return 0
-        
-        if (valA < valB) return sortConfig.direction === "asc" ? -1 : 1
-        if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1
-        return 0
-      })
-  }, [entries, searchTerm, typeFilter, dateRange, sortConfig])
+  // 1. Tri chronologique strict : datetime complet (date+heure) puis createdAt en fallback
+  const sortedChronologically = [...entries].sort((a, b) => {
+    const dateA = new Date(a.date).getTime();
+    const dateB = new Date(b.date).getTime();
+    if (dateA !== dateB) return dateA - dateB;
+    // Fallback : ordre de création (createdAt) pour discriminer deux entrées à la même seconde
+    return new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime();
+  });
+
+  // 2. Calcul du solde progressif (running balance) à partir de zéro, dans l'ordre chronologique strict
+  let runningBalance = 0;
+  const entriesWithCalculatedBalance = sortedChronologically.map(entry => {
+    if (entry.type === "ENTREE") {
+      runningBalance += entry.amount;
+    } else {
+      runningBalance -= entry.amount;
+    }
+    // Le solde calculé représente l'état de la caisse APRÈS cette transaction
+    return { ...entry, calculatedBalance: runningBalance };
+  });
+
+  // 3. Filtres de recherche, type et plage de dates
+  const filtered = entriesWithCalculatedBalance.filter(entry => {
+    const matchesSearch = entry.label.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                         (entry.accountNumber?.toLowerCase().includes(searchTerm.toLowerCase()) || false)
+    const matchesType = typeFilter === "ALL" || entry.type === typeFilter
+
+    let matchesDateRange = true
+    if (dateRange.from && dateRange.to) {
+      const entryDate = new Date(entry.date)
+      matchesDateRange = entryDate >= new Date(dateRange.from) && entryDate <= new Date(dateRange.to)
+    }
+    return matchesSearch && matchesType && matchesDateRange
+  });
+
+  // 4. Tri d'affichage final selon le choix de l'utilisateur (par défaut : date DESC)
+  return filtered.sort((a, b) => {
+    const valA = a[sortConfig.key]
+    const valB = b[sortConfig.key]
+
+    if (sortConfig.key === "date") {
+      const dateA = new Date(a.date).getTime();
+      const dateB = new Date(b.date).getTime();
+      if (dateA !== dateB) return sortConfig.direction === "asc" ? dateA - dateB : dateB - dateA;
+      // Même datetime : respecter l'ordre createdAt
+      const caA = new Date(a.createdAt).getTime();
+      const caB = new Date(b.createdAt).getTime();
+      return sortConfig.direction === "asc" ? caA - caB : caB - caA;
+    }
+
+    if (!valA || !valB) return 0
+    if (valA < valB) return sortConfig.direction === "asc" ? -1 : 1
+    if (valA > valB) return sortConfig.direction === "asc" ? 1 : -1
+    return 0
+  });
+}, [entries, searchTerm, typeFilter, dateRange, sortConfig]);
+
   const handleSort = (key: keyof CashEntry) => {
     setSortConfig(prev => ({
       key,
@@ -103,7 +124,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
     }))
   }
 
-  const generatePDFReport = (entries: CashEntry[]) => {
+  const generatePDFReport = (entries: (CashEntry & { calculatedBalance: number })[]) => {
     // Créer un nouveau document PDF
     const doc = new jsPDF()
     const pageWidth = doc.internal.pageSize.getWidth()
@@ -253,12 +274,12 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
       
       xPos = startX
       const rowData = [
-        format(new Date(entry.date), "dd/MM/yyyy", { locale: fr }),
+        format(new Date(entry.date), "dd/MM/yyyy HH:mm", { locale: fr }),
         entry.accountNumber || "-",
         entry.label,
         entry.type,
         `${entry.type === "ENTREE" ? "+" : ""}${formatCurrency(entry.amount)} $`,
-        `${formatCurrency(entry.balance)} $`
+        `${formatCurrency(entry.calculatedBalance)} $`
       ]
       
       let additionalHeight = 0 // Déclarer ici pour être accessible après la boucle
@@ -356,18 +377,18 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
     doc.save(`rapport-caisse-${format(new Date(), "yyyy-MM-dd")}.pdf`)
   }
 
-  const generateExcelReport = (entries: CashEntry[]) => {
+  const generateExcelReport = (entries: (CashEntry & { calculatedBalance: number })[]) => {
     // Créer le contenu CSV (format compatible Excel)
     const headers = ["Date", "Compte", "Libellé", "Type", "Montant", "Solde"]
     const csvContent = [
       headers.join(","),
       ...entries.map(entry => [
-        format(new Date(entry.date), "dd/MM/yyyy", { locale: fr }),
+        format(new Date(entry.date), "dd/MM/yyyy HH:mm", { locale: fr }),
         entry.accountNumber || "",
         `"${entry.label.replace(/"/g, '""')}"`, // Échapper les guillemets
         entry.type,
         entry.amount,
-        entry.balance
+        entry.calculatedBalance
       ].join(","))
     ].join("\n")
 
@@ -548,7 +569,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
               {filteredEntries.map((entry) => (
                 <TableRow key={entry.id} className="group hover:bg-zinc-50/50 transition-colors">
                   <TableCell className="font-medium text-zinc-600">
-                    {format(new Date(entry.date), "dd/MM/yyyy", { locale: fr })}
+                    {format(new Date(entry.date), "dd/MM/yyyy HH:mm", { locale: fr })}
                   </TableCell>
                   <TableCell className="text-zinc-500 text-xs font-mono">{entry.accountNumber || "-"}</TableCell>
                   <TableCell className="font-semibold text-zinc-900 max-w-xs align-top">
@@ -565,7 +586,7 @@ export function CashBookManager({ entries }: CashBookManagerProps) {
                     </Badge>
                   </TableCell>
                   <TableCell className="text-right font-medium text-zinc-500">
-                    {formatCurrency(entry.balance)} $
+                    {formatCurrency((entry as any).calculatedBalance)} $
                   </TableCell>
                   <TableCell className="text-right">
                     <div className="flex justify-end gap-1 opacity-0 group-hover:opacity-100 transition-opacity">

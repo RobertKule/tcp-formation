@@ -24,28 +24,16 @@ export async function createCashEntry(data: {
   type: "ENTREE" | "SORTIE";
 }) {
   try {
-    // Get last balance
-    const lastEntry = await (prisma as any).cashEntry.findFirst({
-      orderBy: { date: "desc" }
-    })
-
-    const currentBalance = lastEntry ? lastEntry.balance : 0
-    const newBalance = data.type === "ENTREE" 
-      ? currentBalance + data.amount 
-      : currentBalance - data.amount
-    
     const entry = await (prisma as any).cashEntry.create({
       data: {
         ...data,
-        balance: newBalance
+        balance: 0 // On met 0 par défaut, on ne s'en sert plus pour le calcul
       }
     })
-
     revalidatePath("/admin")
     return { success: true, data: entry }
   } catch (error) {
-    console.error("Error creating cash entry:", error)
-    return { success: false, error: "Erreur lors de l'ajout de l'opération." }
+    return { success: false, error: "Erreur lors de l'ajout." }
   }
 }
 
