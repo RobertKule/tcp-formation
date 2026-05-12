@@ -28,9 +28,18 @@ const formSchema = z.object({
   telephone: z.string().min(10, "Numéro de téléphone invalide"),
   email: z.string().email("Email invalide"),
   modePaiement: z.enum(["CASH", "MOBILE_MONEY"]),
+  numeroMobileMoney: z.string().optional(),
   montant: z.number().min(0).optional(),
   capturePaiementUrl: z.string().optional().nullable(),
   formationId: z.string().min(1, "Veuillez choisir une formation"),
+}).superRefine((data, ctx) => {
+  if (data.modePaiement === "MOBILE_MONEY" && (!data.numeroMobileMoney || data.numeroMobileMoney.length < 10)) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: "Numéro Mobile Money valide requis",
+      path: ["numeroMobileMoney"],
+    })
+  }
 })
 
 export function RegistrationForm({ 
@@ -62,6 +71,7 @@ export function RegistrationForm({
       telephone: "",
       email: "",
       modePaiement: "CASH",
+      numeroMobileMoney: "",
       montant: undefined,
       capturePaiementUrl: null,
       formationId: "",
@@ -123,7 +133,7 @@ export function RegistrationForm({
   const steps = [
     { id: 1, title: "Choix de la formation", fields: ["formationId"] as StepKeys[] },
     { id: 2, title: "Vos informations", fields: ["nom", "postnom", "prenom", "email", "telephone"] as StepKeys[] },
-    { id: 3, title: "Paiement", fields: ["modePaiement", "montant", "capturePaiementUrl"] as StepKeys[] },
+    { id: 3, title: "Paiement", fields: ["modePaiement", "numeroMobileMoney", "montant", "capturePaiementUrl"] as StepKeys[] },
     { id: 4, title: "Récapitulatif", fields: [] as StepKeys[] },
   ]
 
@@ -392,6 +402,26 @@ export function RegistrationForm({
                   )}
                 />
 
+                {watchModePaiement === "MOBILE_MONEY" && (
+                  <FormField
+                    control={form.control}
+                    name="numeroMobileMoney"
+                    render={({ field }) => (
+                      <FormItem className="animate-in fade-in zoom-in-95 duration-200">
+                        <FormLabel className="text-zinc-600">Numéro Mobile Money</FormLabel>
+                        <FormControl>
+                          <Input 
+                            placeholder="Ex: 0812345678" 
+                            className="h-12 bg-zinc-50 border-zinc-200 rounded-xl"
+                            {...field} 
+                          />
+                        </FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )}
+                  />
+                )}
+
                 {/* Display Installments (Tranches) */}
                 {selectedFormation?.tranches && (Array.isArray((selectedFormation as any).tranches)) && ((selectedFormation as any).tranches as any[]).length > 0 && (
                   <div className="bg-zinc-50 rounded-xl p-4 border border-zinc-100 space-y-3 animate-in fade-in slide-in-from-top-2 duration-300">
@@ -481,7 +511,11 @@ export function RegistrationForm({
                   <div>
                     <h3 className="text-sm font-medium text-zinc-500 mb-1">Formation sélectionnée</h3>
                     <p className="text-lg font-semibold text-[#0B1527]">{selectedFormation?.nom}</p>
-                    <p className="text-sm text-blue-600 font-medium">${selectedFormation?.prix}</p>
+                    <div className="flex items-center gap-2">
+                       <p className="text-sm text-blue-600 font-medium">${selectedFormation?.prix}</p>
+                       <span className="text-zinc-300">•</span>
+                       <p className="text-[10px] text-zinc-400">Matricule: TCP-{selectedFormation?.nom.split(' ')[0].toUpperCase() || "..."}-XX-XXXX</p>
+                    </div>
                   </div>
                   <div className="h-px bg-zinc-200 w-full" />
                   
@@ -499,7 +533,10 @@ export function RegistrationForm({
                     <p className="text-base text-[#0B1527]">
                       {watchModePaiement === "CASH" ? "Espèces (Cash)" : "Mobile Money"}
                     </p>
-                    {watchModePaiement === "CASH" && form.watch("montant") && (
+                    {watchModePaiement === "MOBILE_MONEY" && form.watch("numeroMobileMoney") && (
+                      <p className="text-sm text-blue-600 font-medium">N°: {form.watch("numeroMobileMoney")}</p>
+                    )}
+                    {form.watch("montant") && (
                       <p className="text-sm text-zinc-600">Acompte déclaré : ${form.watch("montant")}</p>
                     )}
                     {watchModePaiement === "MOBILE_MONEY" && uploadUrl && (

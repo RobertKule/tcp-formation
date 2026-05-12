@@ -42,9 +42,10 @@ model Payment {
   datePayment DateTime @default(now())
   paymentMode String
   statut      String   @default("PENDING")
-  captureUrl  String?
-  commentaire String?
-  adminId     String?
+  captureUrl        String?
+  numeroMobileMoney String?
+  commentaire       String?
+  adminId           String?
   candidatId  String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt

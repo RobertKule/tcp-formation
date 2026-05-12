@@ -25,6 +25,7 @@ const candidateSchema = z.object({
   telephone: z.string().min(10, "Numéro de téléphone invalide"),
   email: z.string().email("Email invalide"),
   modePaiement: z.enum(["CASH", "MOBILE_MONEY"]),
+  numeroMobileMoney: z.string().optional(),
   montant: z.coerce.number().optional(),
   capturePaiementUrl: z.string().optional().nullable(),
   formationId: z.string().min(1, "Veuillez choisir une formation"),
@@ -33,7 +34,7 @@ const candidateSchema = z.object({
 export async function createCandidate(formData: z.infer<typeof candidateSchema>) {
   try {
     const validatedData = candidateSchema.parse(formData)
-    let { montant, modePaiement, capturePaiementUrl, ...candidatInfo } = validatedData
+    let { montant, modePaiement, capturePaiementUrl, numeroMobileMoney, ...candidatInfo } = validatedData
 
     // Fetch formation for naming
     const formation = await prisma.formation.findUnique({
@@ -42,14 +43,26 @@ export async function createCandidate(formData: z.infer<typeof candidateSchema>)
 
     if (!formation) throw new Error("Formation non trouvée")
 
-    // Generate Matricule
     const count = await prisma.candidat.count({
       where: { formationId: formation.id }
     })
+    
+    // Nettoyer le nom de la formation pour le matricule
+    const formationCode = formation.nom.split(' ')[0].replace(/[^a-zA-Z0-9]/g, '').toUpperCase()
+    
+    // Génération robuste du matricule avec suffixe aléatoire pour éviter P2002
     const sequence = (count + 1).toString().padStart(2, '0')
-    // Nettoyer le nom de la formation pour le matricule (pas d'espaces, pas de caractères spéciaux)
-    const formationCode = formation.nom.split(' ')[0].replace(/[^a-zA-Z0-9]/g, '')
-    const matricule = `TCP-${formationCode}-${sequence}`
+    const randomSuffix = Math.random().toString(36).substring(2, 6).toUpperCase()
+    const matricule = `TCP-${formationCode}-${sequence}-${randomSuffix}`
+
+    // Vérification préventive d'existence
+    const existingMatricule = await prisma.candidat.findUnique({
+      where: { matricule }
+    })
+
+    if (existingMatricule) {
+       return { success: false, error: "Conflit de matricule. Veuillez réessayer la soumission." }
+    }
 
     // Upload picture securely if a base64 blob was sent
     if (capturePaiementUrl && capturePaiementUrl.startsWith("data:image")) {
@@ -81,6 +94,7 @@ export async function createCandidate(formData: z.infer<typeof candidateSchema>)
           amount: montant ?? 0,
           paymentMode: modePaiement as any,
           captureUrl: capturePaiementUrl,
+          numeroMobileMoney: numeroMobileMoney, // Enregistré dans le paiement
           candidatId: newCandidate.id,
           statut: "PENDING" as any
         }
@@ -102,9 +116,18 @@ export async function createCandidate(formData: z.infer<typeof candidateSchema>)
 
     revalidatePath("/admin")
     return { success: true, data: newCandidate }
-  } catch (error) {
+  } catch (error: any) {
     console.error("Error creating candidate:", error)
-    return { success: false, error: "Une erreur est survenue lors de l'inscription." }
+    
+    // Gestion spécifique de l'erreur d'unicité Prisma (P2002)
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === 'P2002') {
+      return { 
+        success: false, 
+        error: "Ce matricule est déjà attribué à un autre candidat. Veuillez en utiliser un autre ou réessayer." 
+      }
+    }
+
+    return { success: false, error: error.message || "Une erreur est survenue lors de l'inscription." }
   }
 }
 
